@@ -17,5 +17,16 @@ Methods whose file is missing from the tracefile — or with no instrumented
 lines — count as **uncovered**: missing coverage must never look like
 safety.
 
-Install from this repo: `bin/install-crap4net` (packs and installs it as a
-global dotnet tool).
+## Install
+
+```sh
+git clone https://github.com/bandoyer/crap4net
+dotnet pack crap4net/src -c Release -o crap4net/nupkg
+dotnet tool install --global crap4net --add-source crap4net/nupkg
+```
+
+## Provenance
+
+Built as part of [swarm-forge-herdr](https://github.com/bandoyer/swarm-forge-herdr)
+— the .NET member of the tool family pioneered by
+[crap4clj](https://github.com/unclebob/crap4clj). MIT licensed.
