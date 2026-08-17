@@ -13,6 +13,18 @@ Exit 0 when every method is within `--threshold` (default 6, the swarm's
 hardener bar); exit 2 lists offenders, worst first. `--all` shows every
 method, `--json` for machines.
 
+`--lcov` may repeat to merge coverage from several test suites:
+
+```sh
+crap4net --lcov unit/coverage.info --lcov acceptance/coverage.info src/
+```
+
+Each tracefile is parsed on its own and merged per line with max-hits
+semantics — the same rule used for duplicate `SF:` records within one
+tracefile. Never concatenate tracefiles yourself: coverlet writes them
+without a trailing newline, so `cat` fuses `end_of_record` with the next
+`SF:` line and that record silently vanishes.
+
 Methods whose file is missing from the tracefile — or with no instrumented
 lines — count as **uncovered**: missing coverage must never look like
 safety. A scan that finds **no methods at all** exits 1 (the scanned

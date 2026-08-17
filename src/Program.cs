@@ -11,7 +11,8 @@ internal static class Program
         Usage: crap4net --lcov <tracefile> [options] [source-dir ...]
 
         Options:
-          --lcov <file>       lcov tracefile (e.g. from coverlet). Required.
+          --lcov <file>       lcov tracefile (e.g. from coverlet). Required; repeat
+                              to merge several tracefiles (max hits per line).
           --threshold <n>     failure bar, a finite number > 0; any method above it
                               fails the run (default 6)
           --all               list every method, not just those above the threshold
@@ -24,7 +25,7 @@ internal static class Program
 
   internal static int Main(string[] args)
   {
-    string? lcovPath = null;
+    var lcovPaths = new List<string>();
     double threshold = 6;
     var showAll = false;
     var json = false;
@@ -34,7 +35,7 @@ internal static class Program
     {
       switch (args[i])
       {
-        case "--lcov" when i + 1 < args.Length: lcovPath = args[++i]; break;
+        case "--lcov" when i + 1 < args.Length: lcovPaths.Add(args[++i]); break;
         case "--threshold":
           {
             if (i + 1 >= args.Length)
@@ -65,17 +66,22 @@ internal static class Program
       }
     }
 
-    if (lcovPath is null || !File.Exists(lcovPath))
+    if (lcovPaths.Count == 0)
     {
-      Console.Error.WriteLine(lcovPath is null
-          ? $"Missing required --lcov <tracefile>.\n\n{Usage}"
-          : $"lcov tracefile not found: {lcovPath}");
+      Console.Error.WriteLine($"Missing required --lcov <tracefile>.\n\n{Usage}");
+      return 1;
+    }
+    var missingTracefiles = lcovPaths.Where(path => !File.Exists(path)).ToList();
+    if (missingTracefiles.Count > 0)
+    {
+      foreach (var path in missingTracefiles)
+        Console.Error.WriteLine($"lcov tracefile not found: {path}");
       return 1;
     }
     if (sourceDirs.Count == 0)
       sourceDirs.Add(".");
 
-    var lcov = LcovParser.Parse(File.ReadAllText(lcovPath));
+    var lcov = LcovParser.ParseMany(lcovPaths.Select(File.ReadAllText));
     var scores = new List<CrapScore>();
     foreach (var file in SourceFiles(sourceDirs))
     {

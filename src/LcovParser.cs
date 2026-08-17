@@ -43,6 +43,34 @@ public static class LcovParser
     return files;
   }
 
+  /// <summary>
+  /// Parses several tracefiles and merges them per file and line with
+  /// the same max-hits semantics <see cref="Parse"/> applies to
+  /// duplicate SF records inside one tracefile. Parsing each text on
+  /// its own sidesteps the concatenation hazard: coverlet tracefiles
+  /// end without a newline, so external cat fuses end_of_record with
+  /// the next SF line and silently drops that record.
+  /// </summary>
+  public static Dictionary<string, Dictionary<int, long>> ParseMany(
+      IEnumerable<string> lcovTexts)
+  {
+    var merged = new Dictionary<string, Dictionary<int, long>>();
+    foreach (var parsed in lcovTexts.Select(Parse))
+    {
+      foreach (var (file, lines) in parsed)
+      {
+        if (!merged.TryGetValue(file, out var target))
+        {
+          merged[file] = lines;
+          continue;
+        }
+        foreach (var (line, hits) in lines)
+          target[line] = Math.Max(target.GetValueOrDefault(line), hits);
+      }
+    }
+    return merged;
+  }
+
   public static string NormalizePath(string path) =>
       Path.GetFullPath(path).Replace('\\', '/');
 
