@@ -102,7 +102,10 @@ public class LcovParserTests
   {
     var files = LcovParser.Parse(Sample);
     Assert.Equal(2, files.Count);
-    var widget = files["/repo/src/Widget.cs"];
+    // Parse normalizes its keys, which re-roots "/repo/..." to
+    // "<drive>:/repo/..." on Windows; normalize the expectation through
+    // the same function so both sides re-root identically everywhere.
+    var widget = files[LcovParser.NormalizePath("/repo/src/Widget.cs")];
     Assert.Equal(5, widget[3]);
     Assert.Equal(0, widget[4]);
   }
