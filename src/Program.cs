@@ -132,7 +132,10 @@ internal static class Program
                 complexity = s.Method.Complexity,
                 coverage = Math.Round(s.Coverage, 4),
                 instrumentedLines = s.InstrumentedLines,
-                crap = Math.Round(s.Crap, 2)
+                // crap is rounded for reading; the gate compares crapExact,
+                // so the report can never look within a threshold it failed.
+                crap = Math.Round(s.Crap, 2),
+                crapExact = s.Crap
               })
       }, new JsonSerializerOptions { WriteIndented = true }));
       return;

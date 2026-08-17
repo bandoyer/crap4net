@@ -11,7 +11,11 @@ crap4net --lcov tests/TestResults/<run>/coverage.info src/
 
 Exit 0 when every method is within `--threshold` (default 6, the swarm's
 hardener bar); exit 2 lists offenders, worst first. `--all` shows every
-method, `--json` for machines.
+method, `--json` for machines. The threshold comparison always uses the
+raw score: JSON results carry both `crap` (rounded to two decimals for
+reading) and `crapExact` (the raw value the gate compared), so a method
+that fails a threshold of 6 by 0.004 shows a `crap` of 6.00 but a
+`crapExact` above the bar.
 
 `--lcov` may repeat to merge coverage from several test suites:
 

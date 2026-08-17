@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Crap4Net;
 using Xunit;
 
@@ -335,8 +336,44 @@ public sealed class ProgramTests : IDisposable
     var (_, lcovPath) = CoveredFixture();
     var (exit, output, _) = Run("--lcov", lcovPath, "--json", emptyDir);
     Assert.Equal(1, exit);
-    using var report = System.Text.Json.JsonDocument.Parse(output);
+    using var report = JsonDocument.Parse(output);
     Assert.Equal(0, report.RootElement.GetProperty("methods").GetInt32());
     Assert.Equal(0, report.RootElement.GetProperty("failures").GetInt32());
+  }
+
+  [Fact]
+  public void JsonCarriesTheExactCrapValueTheGateComparesAgainst()
+  {
+    var dir = CreateTempDir();
+    var source = Path.Combine(dir, "Edge.cs");
+    // Complexity 4 at one-third coverage: crap = 16·(2/3)³ + 4
+    // = 8.740740…, which display-rounds DOWN to 8.74.
+    File.WriteAllText(source, """
+        class Edge
+        {
+          static int Pick(int n)
+          {
+            if (n > 2) { return 3; }
+            if (n > 1) { return 2; }
+            if (n > 0) { return 1; }
+            return 0;
+          }
+        }
+        """);
+    var lcov = Path.Combine(dir, "coverage.info");
+    File.WriteAllText(lcov, $"SF:{source}\nDA:5,1\nDA:6,0\nDA:7,0\nend_of_record");
+
+    var (exit, output, _) = Run("--lcov", lcov, "--threshold", "8.7404", "--json", dir);
+
+    Assert.Equal(2, exit);
+    using var report = JsonDocument.Parse(output);
+    var result = report.RootElement.GetProperty("results")[0];
+    // The rounded display value sits below the bar the gate failed on;
+    // crapExact must expose the raw value so the report can't contradict
+    // the exit code.
+    Assert.Equal(8.74, result.GetProperty("crap").GetDouble());
+    Assert.True(result.GetProperty("crap").GetDouble() < 8.7404);
+    Assert.True(result.GetProperty("crapExact").GetDouble() > 8.7404);
+    Assert.Equal(128.0 / 27 + 4, result.GetProperty("crapExact").GetDouble(), precision: 10);
   }
 }
