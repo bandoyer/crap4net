@@ -317,11 +317,7 @@ public sealed class ProgramTests : IDisposable
     Assert.Contains(sourceFile, err);
   }
 
-  // REVIEW FINDING: "crap4net --lcov" (flag last, no value) reports
-  // "Unknown option: --lcov" — factually false, and inconsistent with the
-  // dedicated missing-value error --threshold got in the same slice.
-  // Enable this test with the fix.
-  [Fact(Skip = "Review finding: valueless --lcov misreported as an unknown option")]
+  [Fact]
   public void LcovWithoutValueIsReportedAsMissingValueNotUnknownOption()
   {
     var (exit, _, err) = Run("--lcov");

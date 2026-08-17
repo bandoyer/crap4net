@@ -35,7 +35,16 @@ internal static class Program
     {
       switch (args[i])
       {
-        case "--lcov" when i + 1 < args.Length: lcovPaths.Add(args[++i]); break;
+        case "--lcov":
+          {
+            if (i + 1 >= args.Length)
+            {
+              Console.Error.WriteLine($"Missing value for --lcov.\n\n{Usage}");
+              return 1;
+            }
+            lcovPaths.Add(args[++i]);
+            break;
+          }
         case "--threshold":
           {
             if (i + 1 >= args.Length)
