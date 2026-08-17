@@ -1,0 +1,53 @@
+# Article: Project
+
+## Language and layout
+
+- Language: C# / .NET 10 (solution `crap4net.slnx`)
+- Production code: `src/` — four files, deliberately small: Program.cs
+  (CLI + report), LcovParser.cs, ComplexityWalker.cs (Roslyn),
+  CrapAnalyzer.cs. Smallness is a feature: this tool gates other
+  codebases, so it must stay auditable in one sitting. Resist new
+  files and abstractions unless a fix genuinely needs them.
+- Tests: `tests/crap4net.Tests.csproj` (xUnit)
+- This is a QUALITY GATE consumed by swarm agents in other repos that
+  trust its exit codes blindly. False greens are the worst possible
+  defect class; when in doubt, fail loudly.
+
+## Commands
+
+- Build: `dotnet build` (warnings-as-errors stays on)
+- Unit tests: `dotnet test`
+- Lint/format: `dotnet format`
+- Self-check (dogfood): coverage via
+  `dotnet test --collect:"XPlat Code Coverage;Format=lcov"`, then run
+  the tool on itself: `dotnet run --project src -- --lcov <coverage.info> src`
+
+## Quality bars
+
+Universal — these gate EVERY acceptance and handoff:
+
+- `dotnet build` clean, 0 warnings
+- All tests green: `dotnet test`
+- `dotnet format --verify-no-changes` clean
+- Exit-code contract stated in `--help` matches the implementation
+  exactly; every distinct exit path has a test.
+- Tests must be OS-portable: no absolute POSIX paths in expectations
+  (this suite must pass on Windows; one current test violates this
+  and is part of the work).
+
+## Code style
+
+- Two-space indentation, `.editorconfig` enforced; `dotnet format`
+  must stay clean.
+- Tests: xUnit with bare `Assert.*` — that is THIS repo's idiom
+  (unlike other bandoyer repos); match the existing file.
+- XML doc comments on public types/members, matching the existing
+  density.
+- Commits: plain succinct subjects, no trailers, evidence in the body.
+
+## Notes
+
+- README.md documents the CLI surface; any flag or exit-code change
+  updates it in the same commit.
+- The LcovParser's duplicate-SF merge uses max-hits semantics on
+  purpose (multi-suite line coverage); preserve it.

@@ -1,0 +1,49 @@
+# Article: Toolset (dotnet)
+
+Quality toolset for C# / .NET projects.
+
+These are the project's quality tools. Where a role prompt names a
+purpose (coverage, mutation, crap, dry, boundaries, acceptance), use
+exactly the command below — no substitutes.
+
+## acceptance
+
+    dotnet test <acceptance-project>
+
+Reqnroll for Gherkin acceptance. Do NOT use SpecFlow (discontinued 2024); do not let an agent add it.
+
+## boundaries
+
+    dotnet test <arch-tests-project>
+
+Architecture rules as NetArchTest.Rules (or ArchUnitNET) tests in a dedicated test project; failures are blocking.
+
+## coverage
+
+    dotnet test --collect:"XPlat Code Coverage;Format=lcov"
+
+coverlet writes lcov to <tests>/TestResults/<run-id>/coverage.info. Regenerate before reading any coverage-derived metric; stale coverage invalidates everything built on it.
+
+## crap
+
+    crap4net --lcov <coverage.info> <source-dir>
+
+CRAP = complexity^2 x (1-coverage)^3 + complexity, computed per method from source + lcov. Bar: every method <= 6 (exit 2 lists offenders). Requires fresh coverage first.
+
+## dry
+
+    jscpd --min-tokens 50 --reporters console <source-dir>
+
+Duplication within the slice's scope gets removed or explicitly justified.
+
+## mutation
+
+    dotnet stryker
+
+Run from the test project directory. Surviving mutants in the slice's scope are work: kill them with better tests or record precisely why each survivor is unkillable.
+
+## test
+
+    dotnet test
+
+Full unit suite; green before any handoff. Test stack: xUnit as runner, Shouldly for assertions (value.ShouldBe(expected), Should.Throw<T>), NSubstitute for test doubles. Do not use bare Assert.* or other mocking libraries in new tests.
