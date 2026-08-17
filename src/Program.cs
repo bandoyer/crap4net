@@ -80,15 +80,36 @@ internal static class Program
     }
     if (sourceDirs.Count == 0)
       sourceDirs.Add(".");
-
-    var lcov = LcovParser.ParseMany(lcovPaths.Select(File.ReadAllText));
-    var scores = new List<CrapScore>();
-    foreach (var file in SourceFiles(sourceDirs))
+    // Validate up front with our own messages: exception text for a bad
+    // path varies by OS, and stderr must always name the offending path.
+    var invalidDirs = sourceDirs.Where(dir => !Directory.Exists(dir)).ToList();
+    if (invalidDirs.Count > 0)
     {
-      var hits = LcovParser.ForFile(lcov, file);
-      scores.AddRange(
-          ComplexityWalker.Analyze(file, File.ReadAllText(file))
-              .Select(method => CrapAnalyzer.Score(method, hits)));
+      foreach (var dir in invalidDirs)
+        Console.Error.WriteLine(File.Exists(dir)
+            ? $"source path is a file, not a directory: {dir}"
+            : $"source directory not found: {dir}");
+      return 1;
+    }
+
+    var scores = new List<CrapScore>();
+    try
+    {
+      var lcov = LcovParser.ParseMany(lcovPaths.Select(File.ReadAllText));
+      foreach (var file in SourceFiles(sourceDirs))
+      {
+        var hits = LcovParser.ForFile(lcov, file);
+        scores.AddRange(
+            ComplexityWalker.Analyze(file, File.ReadAllText(file))
+                .Select(method => CrapAnalyzer.Score(method, hits)));
+      }
+    }
+    // Unreadable tracefiles or source (permissions, paths vanishing
+    // mid-run) are input errors: exit 1, never an unhandled crash.
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+    {
+      Console.Error.WriteLine($"crap4net: cannot read input: {error.Message}");
+      return 1;
     }
 
     var failures = scores.Where(s => s.Crap > threshold)

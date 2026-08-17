@@ -297,13 +297,7 @@ public sealed class ProgramTests : IDisposable
     Assert.Contains("NO METHODS ANALYZED", output);
   }
 
-  // REVIEW FINDING: a mistyped (nonexistent) source dir crashes with an
-  // unhandled DirectoryNotFoundException — SIGABRT, exit 134, stack trace —
-  // instead of the contract's exit 1. The README explicitly promises "a
-  // mistyped source dir must never look like a pass ... exits 1 (the
-  // scanned directories are named on stderr)", but the empty-scan guard
-  // only covers dirs that exist. Enable this test with the fix.
-  [Fact(Skip = "Review finding: nonexistent source dir crashes with exit 134 instead of exit 1")]
+  [Fact]
   public void MistypedSourceDirFailsCleanlyInsteadOfCrashing()
   {
     var (_, lcovPath) = CoveredFixture();
@@ -313,10 +307,7 @@ public sealed class ProgramTests : IDisposable
     Assert.Contains(ghostDir, err);
   }
 
-  // REVIEW FINDING: same defect class as above — a source-dir argument
-  // that names a file, not a directory, also crashes with exit 134.
-  // Enable this test with the fix.
-  [Fact(Skip = "Review finding: file passed as source dir crashes with exit 134 instead of exit 1")]
+  [Fact]
   public void SourceDirThatIsAFileFailsCleanlyInsteadOfCrashing()
   {
     var (sourceDir, lcovPath) = CoveredFixture();
