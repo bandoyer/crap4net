@@ -262,6 +262,20 @@ public sealed class ProgramTests : IDisposable
     Assert.Equal(0, exit);
   }
 
+  [Fact]
+  public void AllFlagListsMethodsWithinTheThreshold()
+  {
+    var (sourceDir, lcovPath) = CoveredFixture();
+    var (baselineExit, baselineOut, _) = Run("--lcov", lcovPath, sourceDir);
+    var (allExit, allOut, _) = Run("--lcov", lcovPath, "--all", sourceDir);
+    // A passing method is listed only under --all; the exit code is
+    // unaffected by what gets listed.
+    Assert.Equal(0, baselineExit);
+    Assert.Equal(0, allExit);
+    Assert.DoesNotContain("Sample.Twice", baselineOut);
+    Assert.Contains("Sample.Twice", allOut);
+  }
+
   [Theory]
   [InlineData("NaN")]        // parses, then poisons every comparison to false
   [InlineData("Infinity")]   // parses, nothing can ever exceed it

@@ -25,116 +25,180 @@ internal static class Program
 
   internal static int Main(string[] args)
   {
-    var lcovPaths = new List<string>();
-    double threshold = 6;
-    var showAll = false;
-    var json = false;
-    var sourceDirs = new List<string>();
+    var options = ParseArguments(args, out var exitCode);
+    if (options is null)
+      return exitCode;
+    if (!InputsAreUsable(options))
+      return 1;
+    var scores = TryAnalyze(options);
+    if (scores is null)
+      return 1;
+    return Gate(options, scores);
+  }
 
+  /// <summary>
+  /// Parses the whole command line. Returns null when the run should end
+  /// during parsing (help, or a bad argument), with the exit code in
+  /// <paramref name="exitCode"/>.
+  /// </summary>
+  private static Options? ParseArguments(string[] args, out int exitCode)
+  {
+    var options = new Options();
     for (var i = 0; i < args.Length; i++)
     {
-      switch (args[i])
+      var stop = ApplyArgument(args, ref i, options);
+      if (stop is int code)
       {
-        case "--lcov":
-          {
-            if (i + 1 >= args.Length)
-            {
-              Console.Error.WriteLine($"Missing value for --lcov.\n\n{Usage}");
-              return 1;
-            }
-            lcovPaths.Add(args[++i]);
-            break;
-          }
-        case "--threshold":
-          {
-            if (i + 1 >= args.Length)
-            {
-              Console.Error.WriteLine($"Missing value for --threshold.\n\n{Usage}");
-              return 1;
-            }
-            // Invariant culture so the gate reads "6.5" identically on every
-            // machine; NaN/Infinity parse successfully but poison the
-            // comparison (crap > NaN is always false), so only finite
-            // positive values may pass.
-            var value = args[++i];
-            if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out threshold)
-                || !double.IsFinite(threshold) || threshold <= 0)
-            {
-              Console.Error.WriteLine(
-                  $"Invalid --threshold '{value}': must be a finite number greater than zero.");
-              return 1;
-            }
-            break;
-          }
-        case "--all": showAll = true; break;
-        case "--json": json = true; break;
-        case "--help" or "-h": Console.WriteLine(Usage); return 0;
-        case var flag when flag.StartsWith('-'):
-          Console.Error.WriteLine($"Unknown option: {flag}\n\n{Usage}"); return 1;
-        default: sourceDirs.Add(args[i]); break;
+        exitCode = code;
+        return null;
       }
     }
+    if (options.SourceDirs.Count == 0)
+      options.SourceDirs.Add(".");
+    exitCode = 0;
+    return options;
+  }
 
-    if (lcovPaths.Count == 0)
+  /// <summary>
+  /// Applies one argument to <paramref name="options"/>. A non-null
+  /// return is the exit code the run must stop with; null means keep
+  /// parsing. Arguments that consume a value advance <paramref name="i"/>.
+  /// </summary>
+  private static int? ApplyArgument(string[] args, ref int i, Options options)
+  {
+    switch (args[i])
+    {
+      case "--help" or "-h": Console.WriteLine(Usage); return 0;
+      case "--all": options.ShowAll = true; return null;
+      case "--json": options.Json = true; return null;
+      default: return ApplyValueOrSourceDir(args, ref i, options);
+    }
+  }
+
+  private static int? ApplyValueOrSourceDir(string[] args, ref int i, Options options)
+  {
+    switch (args[i])
+    {
+      case "--lcov":
+        if (!TryTakeValue(args, ref i, out var tracefile))
+          return MissingValue("--lcov");
+        options.LcovPaths.Add(tracefile);
+        return null;
+      case "--threshold":
+        return ApplyThreshold(args, ref i, options);
+      case var flag when flag.StartsWith('-'):
+        Console.Error.WriteLine($"Unknown option: {flag}\n\n{Usage}");
+        return 1;
+      default:
+        options.SourceDirs.Add(args[i]);
+        return null;
+    }
+  }
+
+  private static int? ApplyThreshold(string[] args, ref int i, Options options)
+  {
+    if (!TryTakeValue(args, ref i, out var value))
+      return MissingValue("--threshold");
+    if (!IsUsableThreshold(value, out options.Threshold))
+    {
+      Console.Error.WriteLine(
+          $"Invalid --threshold '{value}': must be a finite number greater than zero.");
+      return 1;
+    }
+    return null;
+  }
+
+  /// <summary>
+  /// Invariant culture so the gate reads "6.5" identically on every
+  /// machine; NaN/Infinity parse successfully but poison the comparison
+  /// (crap > NaN is always false), so only finite positive values pass.
+  /// </summary>
+  private static bool IsUsableThreshold(string value, out double threshold) =>
+      double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out threshold)
+      && double.IsFinite(threshold)
+      && threshold > 0;
+
+  private static bool TryTakeValue(string[] args, ref int i, out string value)
+  {
+    if (i + 1 >= args.Length)
+    {
+      value = "";
+      return false;
+    }
+    value = args[++i];
+    return true;
+  }
+
+  private static int MissingValue(string flag)
+  {
+    Console.Error.WriteLine($"Missing value for {flag}.\n\n{Usage}");
+    return 1;
+  }
+
+  /// <summary>
+  /// Checks every input path up front with our own messages — exception
+  /// text for a bad path varies by OS, and stderr must always name the
+  /// offending path. Reports all offenders, then fails the run.
+  /// </summary>
+  private static bool InputsAreUsable(Options options)
+  {
+    if (options.LcovPaths.Count == 0)
     {
       Console.Error.WriteLine($"Missing required --lcov <tracefile>.\n\n{Usage}");
-      return 1;
+      return false;
     }
-    var missingTracefiles = lcovPaths.Where(path => !File.Exists(path)).ToList();
-    if (missingTracefiles.Count > 0)
-    {
-      foreach (var path in missingTracefiles)
-        Console.Error.WriteLine($"lcov tracefile not found: {path}");
-      return 1;
-    }
-    if (sourceDirs.Count == 0)
-      sourceDirs.Add(".");
-    // Validate up front with our own messages: exception text for a bad
-    // path varies by OS, and stderr must always name the offending path.
-    var invalidDirs = sourceDirs.Where(dir => !Directory.Exists(dir)).ToList();
-    if (invalidDirs.Count > 0)
-    {
-      foreach (var dir in invalidDirs)
-        Console.Error.WriteLine(File.Exists(dir)
-            ? $"source path is a file, not a directory: {dir}"
-            : $"source directory not found: {dir}");
-      return 1;
-    }
+    return TracefilesExist(options.LcovPaths) && SourceDirsExist(options.SourceDirs);
+  }
 
-    var scores = new List<CrapScore>();
+  private static bool TracefilesExist(List<string> paths)
+  {
+    var missing = paths.Where(path => !File.Exists(path)).ToList();
+    foreach (var path in missing)
+      Console.Error.WriteLine($"lcov tracefile not found: {path}");
+    return missing.Count == 0;
+  }
+
+  private static bool SourceDirsExist(List<string> dirs)
+  {
+    var invalid = dirs.Where(dir => !Directory.Exists(dir)).ToList();
+    foreach (var dir in invalid)
+      Console.Error.WriteLine(File.Exists(dir)
+          ? $"source path is a file, not a directory: {dir}"
+          : $"source directory not found: {dir}");
+    return invalid.Count == 0;
+  }
+
+  /// <summary>
+  /// Reads the tracefiles and scores every method found under the source
+  /// dirs. Unreadable input (permissions, paths vanishing mid-run) is an
+  /// input error: reported on stderr, null returned — never a crash.
+  /// </summary>
+  private static List<CrapScore>? TryAnalyze(Options options)
+  {
     try
     {
-      var lcov = LcovParser.ParseMany(lcovPaths.Select(File.ReadAllText));
-      foreach (var file in SourceFiles(sourceDirs))
-      {
-        var hits = LcovParser.ForFile(lcov, file);
-        scores.AddRange(
-            ComplexityWalker.Analyze(file, File.ReadAllText(file))
-                .Select(method => CrapAnalyzer.Score(method, hits)));
-      }
+      var lcov = LcovParser.ParseMany(options.LcovPaths.Select(File.ReadAllText));
+      return ScoreAllMethods(options.SourceDirs, lcov);
     }
-    // Unreadable tracefiles or source (permissions, paths vanishing
-    // mid-run) are input errors: exit 1, never an unhandled crash.
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
       Console.Error.WriteLine($"crap4net: cannot read input: {error.Message}");
-      return 1;
+      return null;
     }
+  }
 
-    var failures = scores.Where(s => s.Crap > threshold)
-                         .OrderByDescending(s => s.Crap)
-                         .ToList();
-    Report(json, showAll, threshold, scores, failures);
-    // An empty scan means the gate measured nothing — a mistyped source
-    // dir (or a scan of generated-only trees) must fail, not pass.
-    if (scores.Count == 0)
+  private static List<CrapScore> ScoreAllMethods(
+      List<string> dirs, Dictionary<string, Dictionary<int, long>> lcov)
+  {
+    var scores = new List<CrapScore>();
+    foreach (var file in SourceFiles(dirs))
     {
-      Console.Error.WriteLine(
-          "crap4net: no methods found — nothing was analyzed. Scanned: "
-          + string.Join(", ", sourceDirs.Select(Path.GetFullPath)));
-      return 1;
+      var hits = LcovParser.ForFile(lcov, file);
+      scores.AddRange(
+          ComplexityWalker.Analyze(file, File.ReadAllText(file))
+              .Select(method => CrapAnalyzer.Score(method, hits)));
     }
-    return failures.Count == 0 ? 0 : 2;
+    return scores;
   }
 
   private static IEnumerable<string> SourceFiles(IEnumerable<string> dirs) =>
@@ -143,43 +207,80 @@ internal static class Program
                         .Any(segment => segment is "bin" or "obj"))
           .Distinct();
 
-  private static void Report(bool json, bool showAll, double threshold,
-      List<CrapScore> scores, List<CrapScore> failures)
+  /// <summary>
+  /// Reports the scores and applies the exit-code contract: 2 when any
+  /// method exceeds the threshold, 1 when nothing was analyzed (an empty
+  /// scan must never look like a pass), 0 otherwise.
+  /// </summary>
+  private static int Gate(Options options, List<CrapScore> scores)
   {
-    if (json)
+    var failures = scores.Where(s => s.Crap > options.Threshold)
+                         .OrderByDescending(s => s.Crap)
+                         .ToList();
+    var listed = options.ShowAll ? scores.OrderByDescending(s => s.Crap).ToList() : failures;
+    if (options.Json)
+      ReportJson(options.Threshold, scores.Count, failures.Count, listed);
+    else
+      ReportText(options.Threshold, scores.Count, failures.Count, listed);
+    if (scores.Count == 0)
     {
-      Console.WriteLine(JsonSerializer.Serialize(new
-      {
-        threshold,
-        methods = scores.Count,
-        failures = failures.Count,
-        results = (showAll ? scores.OrderByDescending(s => s.Crap).ToList() : failures)
-              .Select(s => new
-              {
-                file = s.Method.File,
-                method = s.Method.Name,
-                line = s.Method.StartLine,
-                complexity = s.Method.Complexity,
-                coverage = Math.Round(s.Coverage, 4),
-                instrumentedLines = s.InstrumentedLines,
-                // crap is rounded for reading; the gate compares crapExact,
-                // so the report can never look within a threshold it failed.
-                crap = Math.Round(s.Crap, 2),
-                crapExact = s.Crap
-              })
-      }, new JsonSerializerOptions { WriteIndented = true }));
-      return;
+      Console.Error.WriteLine(
+          "crap4net: no methods found — nothing was analyzed. Scanned: "
+          + string.Join(", ", options.SourceDirs.Select(Path.GetFullPath)));
+      return 1;
     }
+    return failures.Count == 0 ? 0 : 2;
+  }
 
-    foreach (var s in showAll ? scores.OrderByDescending(s => s.Crap).ToList() : failures)
+  private static void ReportJson(
+      double threshold, int methods, int failures, List<CrapScore> listed)
+  {
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+      threshold,
+      methods,
+      failures,
+      results = listed.Select(s => new
+      {
+        file = s.Method.File,
+        method = s.Method.Name,
+        line = s.Method.StartLine,
+        complexity = s.Method.Complexity,
+        coverage = Math.Round(s.Coverage, 4),
+        instrumentedLines = s.InstrumentedLines,
+        // crap is rounded for reading; the gate compares crapExact,
+        // so the report can never look within a threshold it failed.
+        crap = Math.Round(s.Crap, 2),
+        crapExact = s.Crap
+      })
+    }, new JsonSerializerOptions { WriteIndented = true }));
+  }
+
+  private static void ReportText(
+      double threshold, int methods, int failures, List<CrapScore> listed)
+  {
+    foreach (var s in listed)
       Console.WriteLine(
           $"{s.Crap,8:F2}  comp {s.Method.Complexity,3}  cov {s.Coverage,6:P1}  " +
           $"{s.Method.File}:{s.Method.StartLine}  {s.Method.Name}" +
           (s.InstrumentedLines == 0 ? "  [no coverage data]" : ""));
 
-    Console.WriteLine($"crap4net: {scores.Count} methods, threshold {threshold}, " +
-                      (scores.Count == 0 ? "NO METHODS ANALYZED."
-                       : failures.Count == 0 ? "all within threshold."
-                       : $"{failures.Count} ABOVE THRESHOLD."));
+    Console.WriteLine(
+        $"crap4net: {methods} methods, threshold {threshold}, " + Summary(methods, failures));
+  }
+
+  private static string Summary(int methods, int failures) =>
+      methods == 0 ? "NO METHODS ANALYZED."
+      : failures == 0 ? "all within threshold."
+      : $"{failures} ABOVE THRESHOLD.";
+
+  /// <summary>Everything the command line said, with defaults applied.</summary>
+  private sealed class Options
+  {
+    public readonly List<string> LcovPaths = new();
+    public readonly List<string> SourceDirs = new();
+    public double Threshold = 6;
+    public bool ShowAll;
+    public bool Json;
   }
 }
