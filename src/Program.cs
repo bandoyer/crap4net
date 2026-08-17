@@ -18,7 +18,8 @@ internal static class Program
           --json              machine-readable output
         Source dirs default to the current directory; bin/ and obj/ are skipped.
 
-        Exit codes: 0 ok; 1 usage/input error; 2 methods above the threshold.
+        Exit codes: 0 ok; 1 usage/input error, or no methods found to analyze;
+        2 methods above the threshold.
         """;
 
   internal static int Main(string[] args)
@@ -88,6 +89,15 @@ internal static class Program
                          .OrderByDescending(s => s.Crap)
                          .ToList();
     Report(json, showAll, threshold, scores, failures);
+    // An empty scan means the gate measured nothing — a mistyped source
+    // dir (or a scan of generated-only trees) must fail, not pass.
+    if (scores.Count == 0)
+    {
+      Console.Error.WriteLine(
+          "crap4net: no methods found — nothing was analyzed. Scanned: "
+          + string.Join(", ", sourceDirs.Select(Path.GetFullPath)));
+      return 1;
+    }
     return failures.Count == 0 ? 0 : 2;
   }
 
@@ -129,7 +139,8 @@ internal static class Program
           (s.InstrumentedLines == 0 ? "  [no coverage data]" : ""));
 
     Console.WriteLine($"crap4net: {scores.Count} methods, threshold {threshold}, " +
-                      (failures.Count == 0 ? "all within threshold."
-                                           : $"{failures.Count} ABOVE THRESHOLD."));
+                      (scores.Count == 0 ? "NO METHODS ANALYZED."
+                       : failures.Count == 0 ? "all within threshold."
+                       : $"{failures.Count} ABOVE THRESHOLD."));
   }
 }

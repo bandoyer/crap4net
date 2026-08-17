@@ -15,7 +15,9 @@ method, `--json` for machines.
 
 Methods whose file is missing from the tracefile — or with no instrumented
 lines — count as **uncovered**: missing coverage must never look like
-safety.
+safety. A scan that finds **no methods at all** exits 1 (the scanned
+directories are named on stderr): a mistyped source dir must never look
+like a pass.
 
 ## Install
 

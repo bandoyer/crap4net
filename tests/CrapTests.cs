@@ -239,4 +239,26 @@ public sealed class ProgramTests : IDisposable
     Assert.Equal(1, exit);
     Assert.Contains("--threshold", err);
   }
+
+  [Fact]
+  public void ZeroMethodsAnalyzedIsAnErrorNamingTheScannedDirs()
+  {
+    var emptyDir = CreateTempDir();
+    var (_, lcovPath) = CoveredFixture();
+    var (exit, _, err) = Run("--lcov", lcovPath, emptyDir);
+    Assert.Equal(1, exit);
+    Assert.Contains(Path.GetFullPath(emptyDir), err);
+  }
+
+  [Fact]
+  public void ZeroMethodsStillEmitsTheStableJsonShape()
+  {
+    var emptyDir = CreateTempDir();
+    var (_, lcovPath) = CoveredFixture();
+    var (exit, output, _) = Run("--lcov", lcovPath, "--json", emptyDir);
+    Assert.Equal(1, exit);
+    using var report = System.Text.Json.JsonDocument.Parse(output);
+    Assert.Equal(0, report.RootElement.GetProperty("methods").GetInt32());
+    Assert.Equal(0, report.RootElement.GetProperty("failures").GetInt32());
+  }
 }
