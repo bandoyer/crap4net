@@ -231,6 +231,30 @@ public sealed class ProgramTests : IDisposable
   }
 
   [Fact]
+  public void HelpPrintsUsageAndExitsZero()
+  {
+    var (exit, output, _) = Run("--help");
+    Assert.Equal(0, exit);
+    Assert.Contains("Exit codes", output);
+  }
+
+  [Fact]
+  public void UnknownOptionIsUsageError()
+  {
+    var (exit, _, err) = Run("--frobnicate");
+    Assert.Equal(1, exit);
+    Assert.Contains("--frobnicate", err);
+  }
+
+  [Fact]
+  public void MissingLcovFlagIsUsageError()
+  {
+    var (exit, _, err) = Run();
+    Assert.Equal(1, exit);
+    Assert.Contains("--lcov", err);
+  }
+
+  [Fact]
   public void CoveredProjectWithinThresholdExitsZero()
   {
     var (sourceDir, lcovPath) = CoveredFixture();
