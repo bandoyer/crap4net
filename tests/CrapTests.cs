@@ -291,9 +291,52 @@ public sealed class ProgramTests : IDisposable
   {
     var emptyDir = CreateTempDir();
     var (_, lcovPath) = CoveredFixture();
-    var (exit, _, err) = Run("--lcov", lcovPath, emptyDir);
+    var (exit, output, err) = Run("--lcov", lcovPath, emptyDir);
     Assert.Equal(1, exit);
     Assert.Contains(Path.GetFullPath(emptyDir), err);
+    Assert.Contains("NO METHODS ANALYZED", output);
+  }
+
+  // REVIEW FINDING: a mistyped (nonexistent) source dir crashes with an
+  // unhandled DirectoryNotFoundException — SIGABRT, exit 134, stack trace —
+  // instead of the contract's exit 1. The README explicitly promises "a
+  // mistyped source dir must never look like a pass ... exits 1 (the
+  // scanned directories are named on stderr)", but the empty-scan guard
+  // only covers dirs that exist. Enable this test with the fix.
+  [Fact(Skip = "Review finding: nonexistent source dir crashes with exit 134 instead of exit 1")]
+  public void MistypedSourceDirFailsCleanlyInsteadOfCrashing()
+  {
+    var (_, lcovPath) = CoveredFixture();
+    var ghostDir = Path.Combine(CreateTempDir(), "typo-dir");
+    var (exit, _, err) = Run("--lcov", lcovPath, ghostDir);
+    Assert.Equal(1, exit);
+    Assert.Contains(ghostDir, err);
+  }
+
+  // REVIEW FINDING: same defect class as above — a source-dir argument
+  // that names a file, not a directory, also crashes with exit 134.
+  // Enable this test with the fix.
+  [Fact(Skip = "Review finding: file passed as source dir crashes with exit 134 instead of exit 1")]
+  public void SourceDirThatIsAFileFailsCleanlyInsteadOfCrashing()
+  {
+    var (sourceDir, lcovPath) = CoveredFixture();
+    var sourceFile = Path.Combine(sourceDir, "Sample.cs");
+    var (exit, _, err) = Run("--lcov", lcovPath, sourceFile);
+    Assert.Equal(1, exit);
+    Assert.Contains(sourceFile, err);
+  }
+
+  // REVIEW FINDING: "crap4net --lcov" (flag last, no value) reports
+  // "Unknown option: --lcov" — factually false, and inconsistent with the
+  // dedicated missing-value error --threshold got in the same slice.
+  // Enable this test with the fix.
+  [Fact(Skip = "Review finding: valueless --lcov misreported as an unknown option")]
+  public void LcovWithoutValueIsReportedAsMissingValueNotUnknownOption()
+  {
+    var (exit, _, err) = Run("--lcov");
+    Assert.Equal(1, exit);
+    Assert.Contains("--lcov", err);
+    Assert.DoesNotContain("Unknown option", err);
   }
 
   /// <summary>
