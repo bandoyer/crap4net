@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Crap4Net;
@@ -11,7 +12,8 @@ internal static class Program
 
         Options:
           --lcov <file>       lcov tracefile (e.g. from coverlet). Required.
-          --threshold <n>     failure bar; any method above it fails the run (default 6)
+          --threshold <n>     failure bar, a finite number > 0; any method above it
+                              fails the run (default 6)
           --all               list every method, not just those above the threshold
           --json              machine-readable output
         Source dirs default to the current directory; bin/ and obj/ are skipped.
@@ -19,7 +21,7 @@ internal static class Program
         Exit codes: 0 ok; 1 usage/input error; 2 methods above the threshold.
         """;
 
-  private static int Main(string[] args)
+  internal static int Main(string[] args)
   {
     string? lcovPath = null;
     double threshold = 6;
@@ -32,9 +34,27 @@ internal static class Program
       switch (args[i])
       {
         case "--lcov" when i + 1 < args.Length: lcovPath = args[++i]; break;
-        case "--threshold" when i + 1 < args.Length
-              && double.TryParse(args[i + 1], out threshold):
-          i++; break;
+        case "--threshold":
+          {
+            if (i + 1 >= args.Length)
+            {
+              Console.Error.WriteLine($"Missing value for --threshold.\n\n{Usage}");
+              return 1;
+            }
+            // Invariant culture so the gate reads "6.5" identically on every
+            // machine; NaN/Infinity parse successfully but poison the
+            // comparison (crap > NaN is always false), so only finite
+            // positive values may pass.
+            var value = args[++i];
+            if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out threshold)
+                || !double.IsFinite(threshold) || threshold <= 0)
+            {
+              Console.Error.WriteLine(
+                  $"Invalid --threshold '{value}': must be a finite number greater than zero.");
+              return 1;
+            }
+            break;
+          }
         case "--all": showAll = true; break;
         case "--json": json = true; break;
         case "--help" or "-h": Console.WriteLine(Usage); return 0;

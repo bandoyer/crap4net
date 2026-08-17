@@ -152,3 +152,91 @@ public class AnalyzerTests
     Assert.Equal(0.0, CrapAnalyzer.Score(method, new Dictionary<int, long>()).Coverage);
   }
 }
+
+/// <summary>
+/// End-to-end exit-code contract tests: Main runs in-process with captured
+/// console. All console-redirecting tests live in this one class so xUnit
+/// never runs two redirections in parallel.
+/// </summary>
+public sealed class ProgramTests : IDisposable
+{
+  private readonly List<string> tempDirs = new();
+
+  public void Dispose()
+  {
+    foreach (var dir in tempDirs)
+      Directory.Delete(dir, recursive: true);
+  }
+
+  private string CreateTempDir()
+  {
+    var dir = Directory.CreateTempSubdirectory("crap4net-tests-").FullName;
+    tempDirs.Add(dir);
+    return dir;
+  }
+
+  /// <summary>
+  /// Writes a one-method source file plus a tracefile that fully covers
+  /// it, so a default run over the pair exits 0.
+  /// </summary>
+  private (string SourceDir, string LcovPath) CoveredFixture()
+  {
+    var dir = CreateTempDir();
+    var source = Path.Combine(dir, "Sample.cs");
+    File.WriteAllText(source, "class Sample { int Twice(int n) { return n * 2; } }");
+    var lcov = Path.Combine(dir, "coverage.info");
+    File.WriteAllText(lcov, $"SF:{source}\nDA:1,1\nend_of_record\n");
+    return (dir, lcov);
+  }
+
+  private static (int Exit, string Out, string Err) Run(params string[] args)
+  {
+    var originalOut = Console.Out;
+    var originalError = Console.Error;
+    using var stdout = new StringWriter();
+    using var stderr = new StringWriter();
+    Console.SetOut(stdout);
+    Console.SetError(stderr);
+    try
+    {
+      return (Program.Main(args), stdout.ToString(), stderr.ToString());
+    }
+    finally
+    {
+      Console.SetOut(originalOut);
+      Console.SetError(originalError);
+    }
+  }
+
+  [Fact]
+  public void CoveredProjectWithinThresholdExitsZero()
+  {
+    var (sourceDir, lcovPath) = CoveredFixture();
+    var (exit, _, _) = Run("--lcov", lcovPath, "--threshold", "6", sourceDir);
+    Assert.Equal(0, exit);
+  }
+
+  [Theory]
+  [InlineData("NaN")]        // parses, then poisons every comparison to false
+  [InlineData("Infinity")]   // parses, nothing can ever exceed it
+  [InlineData("-Infinity")]
+  [InlineData("0")]
+  [InlineData("-1")]
+  [InlineData("six")]
+  public void UnusableThresholdIsUsageErrorEvenWhenInputsAreValid(string value)
+  {
+    var (sourceDir, lcovPath) = CoveredFixture();
+    var (exit, _, err) = Run("--lcov", lcovPath, "--threshold", value, sourceDir);
+    Assert.Equal(1, exit);
+    Assert.Contains("--threshold", err);
+    Assert.Contains(value, err);
+  }
+
+  [Fact]
+  public void ThresholdWithoutValueIsUsageError()
+  {
+    var (exit, _, err) = Run("--threshold");
+    Assert.Equal(1, exit);
+    Assert.Contains("--threshold", err);
+  }
+}
